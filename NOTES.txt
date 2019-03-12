@@ -1,0 +1,20 @@
+
+The re-written version of snakeConsole:
+- Use linked-list instead of array for tail.
+	+ It should be XOR linked-list when it is completed. --DONE
+
+- Menu screen shows first. If player presses "start", show a pause menu. --DONE
+
+- Classic DOS-style loading thing:
+	1.) |
+	2.) /
+	3.) -
+	4.) \
+(Show in pause menu?)
+
+- HI-SCORE!
+
+- COINSSSSSS
+
+- TODO: RESEARCH XOR LINKED LISTS,
+	AND LINKED LISTS IN C++ --DONE
