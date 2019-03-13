@@ -7,9 +7,16 @@
 ------------------------------------------
 */
 
+// Const
+// Operator optimisations
+// Pass by reference through methods
+
 // Includes
 #include <nds.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+
 #include "defines.h"
 #include "structure.h"
 #include "consoles.h"
@@ -18,7 +25,7 @@ struct Vector2 {
 	int x;
 	int y;
 
-	bool Equals (int X, int Y) {
+	bool Equals (int X, int Y) const {
 		return x == X && y == Y;
 	}
 
@@ -28,6 +35,7 @@ struct Vector2 {
 		return *this;
 	}
 
+	// Operator overloads:
 	// = Operator
 	Vector2& operator=(Vector2 a) { x = a.x; y = a.y; return *this; }
 	// + Operator
@@ -47,86 +55,115 @@ struct Vector2 {
 	bool operator!=(const Vector2& a) const { return a.x != x || a.y != y; }
 };
 
-struct TailNode {
-	TailNode* both = NULL; // Xor of previous and next node
-	Vector2 pos;
+template<class T> struct Node {
+	T data;
+	Node<T>* both = NULL; // Xor of previous and next node
 
-	TailNode(Vector2 data) {
-		pos = data;
-		both = NULL;
+	//Node (T d) : data(d) {}
+	virtual void SetData (T newData) {
+		data = newData;
 	}
+
+
+	Node<T>() {}
+	virtual ~Node<T> () {}
 };
 
-// Linked list of tail. (11.03.2019: Finally implemented XOR-linked-list!!!)
-class TailList {
+// XOR linked list implementation.
+template<class T> class NodeCollection {
 	public:
-		TailNode* head;
-		TailNode* tail;
+		Node<T>* head, *tail;
 		int length = 0;
 
-		static TailNode* Xor (TailNode* a, TailNode* b) {
-			return (TailNode*)((uintptr_t)a ^ (uintptr_t)b);
+		static Node<T>* Xor (Node<T>* a, Node<T>* b) {
+			return (Node<T>*)((uintptr_t)a ^ (uintptr_t)b);
 		}
 
 		void Reinitialise () {
 			if (length > 0) {
-				TailNode* cur = head;
-				TailNode* prev = NULL;
-				TailNode* next;
+				Node<T>* cur = head, *prev = NULL, *next;
 				while (1) {
-					next = TailList::Xor(prev, cur->both);
+					next = Xor(prev, cur->both);
+					if (prev != NULL) { delete prev; }
 					prev = cur;
-					if (cur != NULL) {
-						delete cur;
-					}
 					cur = next;
-					
 					if (cur == NULL) { break; }
 				}
+				if (prev != NULL) { delete prev; }
 			}
-
-			length = 0;
-			head = NULL;
-			tail = NULL;
+			length = 0; head = NULL; tail = NULL;
 		}
 
-		void Append(Vector2 pos) {
-			TailNode* temp = new TailNode(pos);
+		void Append(T data) {
+			Node<T>* temp = new Node<T>();
+			temp->SetData(data);
 			temp->both = Xor(tail, NULL);
-
-			if (length > 0) {
-				tail->both = Xor(temp, Xor(tail->both, NULL));
-			}
-			else {
-				head =  temp;
-			}
+			if (length > 0) { tail->both = Xor(temp, Xor(tail->both, NULL)); }
+			else { head =  temp; }
 			tail = temp;
-
 			++length;
 		}
 
-		// ADDRESS OF NEXT NODE IS XOR(CURNODE, NULL)!!!
-		void Prepend(Vector2 pos) {
-			TailNode* temp = new TailNode(pos);
+		void Prepend(T data) {
+			Node<T>* temp = new Node<T>();
+			temp->SetData(data);
 			temp->both = Xor(head, NULL);
-
-			if (length > 0) {
-				head->both = Xor(temp, Xor(head->both, NULL));
-			}
-			else {
-				tail = temp;
-			}
+			if (length > 0) { head->both = Xor(temp, Xor(head->both, NULL)); }
+			else { tail = temp; }
 			head = temp;
-			
 			++length;
+		}
+
+		// Using a lambda with this function is usually pretty useless.
+		// Instead POINT to a method. Can't believe took me so long to realise this...
+		void TraverseForward (void(*function)(T)) {
+			Node<T>* cur = head, *prev = NULL, *next;
+			int i = 0;
+			while (1) {
+				function(cur->data);
+				// Next node address is XOR of prev & cur
+				next = NodeCollection<T>::Xor(prev, cur->both);
+				prev = cur; cur = next;
+				if (cur == NULL) { break; } ++i;
+			}
 		}
 };
 
+struct CoinData {
+	Vector2 pos;
+
+	CoinData() : pos({0, 0}) {}
+	CoinData(Vector2& position) : pos(position) {}
+
+	virtual void Update () {}
+};
+
+// Unused currently... (W.I.P)
+struct CoinDataDynamic : public CoinData {
+	Vector2 velo;
+
+	CoinDataDynamic(Vector2& pos) : CoinData(pos) {
+		// Set velocity to random.
+		int iRandX = (rand() % 2) - 1,
+			iRandY = (rand() % 2) - 1;
+		velo = { iRandX, iRandY };
+	}
+
+	void Update () override {
+		CoinData::Update(); // Call base virtual method
+
+		// Apply velocity to position.
+		pos += velo;
+	}
+};
+
+// Linked list of tail. (11.03.2019: Finally implemented XOR-linked-list!!!)
+//class TailList {} (Now obsolete. Replaced with NodeCollection)
+
 class Player {
 	public:
-		Vector2 pos;
-		Vector2 velo;
-		TailList tail;
+		Vector2 pos, velo;
+		NodeCollection<Vector2> tail;
 
 		void Reset() {
 			pos = P_START_POS;
@@ -163,18 +200,17 @@ class Player {
 		}
 
 	private:
-		int veloTimer = 0;
-		int veloTime = 25;
+		int veloTimer = 0, veloTime = 25;
 
 		// Wraps position between the borders of the game.
-		static void PosWrap(Vector2* x) {
+		static void PosWrap(Vector2& x) {
 			// Wrap x
-			if ((*x).x < 0) { (*x).x += BOARD_WIDTH; }
-			if ((*x).x > BOARD_WIDTH - 1) { (*x).x -= BOARD_WIDTH; }
+			if (x.x < 0) { x.x += BOARD_WIDTH; }
+			if (x.x > BOARD_WIDTH - 1) { x.x -= BOARD_WIDTH; }
 
 			// Wrap y
-			if ((*x).y < 0) { (*x).y += BOARD_HEIGHT; }
-			if ((*x).y > BOARD_HEIGHT - 1) { (*x).y -= BOARD_HEIGHT; }
+			if (x.y < 0) { x.y += BOARD_HEIGHT; }
+			if (x.y > BOARD_HEIGHT - 1) { x.y -= BOARD_HEIGHT; }
 		}
 
 		void Move() {
@@ -182,39 +218,103 @@ class Player {
 			//https://stackoverflow.com/questions/16138998/how-exactly-does-a-xor-linked-list-work
 			// address(prev) = address(next) ^ currentNode(link)
 			// address(next) = address(prev) ^ currentNode(link)
-			TailNode* cur = tail.tail;
-			TailNode* next = NULL;
-			TailNode* prev;
+			Node<Vector2>* cur = tail.tail, *next = NULL, *prev;
 			while (1) {
-				prev = TailList::Xor(next, cur->both);
+				prev = NodeCollection<Vector2>::Xor(next, cur->both);
 				next = cur;
 
 				if (prev != NULL) {
 					// Set position
-					cur->pos = prev->pos;
-					PosWrap(&cur->pos);
+					cur->data = prev->data;
+					PosWrap(cur->data);
 				}
 				else {
 					break;
 				}
 
 				cur = prev;
-				//if (cur == NULL) { break; }
 			}
-			tail.head->pos = pos;
-			PosWrap(&tail.head->pos);
+			tail.head->data = pos;
+			PosWrap(tail.head->data);
 
 			pos += velo;
-			PosWrap(&pos);
+			PosWrap(pos);
 		}
 };
+
+class ScoringManager {
+	public:
+		NodeCollection<CoinData> coins;
+		int coinTimer = 0;
+		int coinTime = 100;
+		int coinInstances = 0;
+		int coinMaximum = 3;
+
+		int hiscore = 0;
+		int curScore;
+
+		void Initialise () {
+			srand(time(NULL));
+		}
+
+		void Update () {
+			UpdateCoinTimer();
+		}
+
+		void Reset () {
+			// Reset coins
+			coins.Reinitialise();
+			coinInstances = 0;
+
+			// Reset score
+		}
+
+		void ScoreAdd(int increment) {
+			curScore += increment;
+		}
+
+		void ScoreReset () {
+			curScore = 0;
+		}
+
+	private:
+		void UpdateCoinTimer () {
+			if (coinInstances > coinMaximum - 1) { 
+				coinTimer = 0;
+				return; 
+			}
+
+			coinTimer++;
+			if (coinTimer > coinTime) {
+				coinTimer = 0;
+				SpawnCoin();
+			}
+		}
+
+		void SpawnCoin () {
+			Vector2 pos = {
+				rand() % (BOARD_WIDTH - 1) + 1, 
+				rand() % (BOARD_HEIGHT - 1) + 1 
+			};
+
+			coins.Append(CoinData(pos));
+			++coinInstances;
+		}
+};
+
+class SaveManager {
+	// TODO: USE FOPEN, AND OTHER BUILT-IN FUNCTIONS TO WORK THIS...
+};
+
+static unsigned int tiles[BOARD_WIDTH][BOARD_HEIGHT];
 
 class Game {
 	public:
 		Player player;
-		unsigned int tiles[BOARD_WIDTH][BOARD_HEIGHT];
-		bool started = false;
-		bool gameLost = false;
+		bool started = false, gameLost = false;
+
+		// Scoring
+		ScoringManager scoring;
 
 		void Start () {
 			ResetGame();
@@ -228,9 +328,10 @@ class Game {
 			levelProgress = 0;
 		}
 
-		void Update(int input) {
+		void Update(int& input) {
 			GameManage();
 			player.ApplyInput(input);
+			scoring.Update();
 			RefreshTiles();
 			DebugInfo();
 			DrawBoard();
@@ -241,10 +342,7 @@ class Game {
 		}
 
 	private:
-		int levelTarget = 100;
-		int level = 0;
-		int levelProgress = 0;
-
+		int levelTarget = 100, level = 0, levelProgress = 0;
 		void DebugInfo () {
 			#if DEBUGMODE == 1
 			SelectConsole(CONSOLE_BTM);
@@ -286,11 +384,15 @@ class Game {
 				// Affect game based on lvl
 				player.SetDelayer(VELO_DELAYER - (level * 2));
 
-				player.tail.Append(player.tail.tail->pos); //.Add(-player.velo.x, -player.velo.y)
+				player.tail.Append(player.tail.tail->data); //.Add(-player.velo.x, -player.velo.y)
 
 			}
 		}
 
+		static void SetCoinTile(CoinData d) {
+			tiles[d.pos.x][d.pos.y] = TILE_COIN;
+		}
+		
 		void RefreshTiles () {
 			for (int y = 0; y < BOARD_HEIGHT; y++) {
 				for (int x = 0; x < BOARD_WIDTH; x++) {
@@ -303,29 +405,25 @@ class Game {
 				}
 			}
 
-			TailNode* cur = player.tail.head;
-			TailNode* prev = NULL;
-			TailNode* next;
+			Node<Vector2>* cur = player.tail.head, *prev = NULL, *next;
 			int i = 0;
 			while (1) {
 				// Start after 0.
 				unsigned int t = TILE_TAIL;
-				if (cur->pos == player.pos) {
+				if (cur->data == player.pos) {
 					t = TILE_LOSEPOINT;
 					gameLost = true;
 				}
-				tiles[cur->pos.x][cur->pos.y] = t;
+				tiles[cur->data.x][cur->data.y] = t;
 
 				// Next is XOR of prev & cur
-				next = TailList::Xor(prev, cur->both);
-				prev = cur;
-				cur = next;
-				
-				if (cur == NULL) {
-					break;
-				}
-				i++;
+				next = NodeCollection<Vector2>::Xor(prev, cur->both);
+				prev = cur; cur = next;
+				if (cur == NULL) { break; } i++;
 			}
+
+			//void(*func)(CoinData) = [](CoinData x) { tiles[x.pos.x][x.pos.y] = TILE_COIN; };
+			scoring.coins.TraverseForward(SetCoinTile);
 		}
 
 		void DrawBoard() {
@@ -361,6 +459,11 @@ class Game {
 							iprintf(TILECHAR_LOSEPOINT);
 						} break;
 
+						case (TILE_COIN): {
+							col(TILECOL_COIN, &lastConsoleCol);
+							iprintf(TILECHAR_COIN);
+						} break;
+
 						default: {
 							col(CONSCOL_I_PNK, &lastConsoleCol);
 							iprintf("??");
@@ -381,6 +484,13 @@ bool gamePaused = false;
 int input = 0;
 Game game;
 
+// Sorta irrelevant, just additional cool thingies.
+#define LOADING_CHAR_COUNT 5
+#define LOADING_CHAR_DELAY 11
+int loadingChar = 0;
+int loadingCharTimer = 0;
+char loadingChars[LOADING_CHAR_COUNT] = "|/-\\";
+
 // (Consoles now in consoles.h)
 
 // Prototype Functions:
@@ -389,6 +499,7 @@ void GameView(); // When on game screen
 void PauseView();
 void HandleInput();
 void PrintCentredTitle(const char*);
+void OnPause ();
 
 int main(void) {
 	setBrightness(3, 0);
@@ -425,6 +536,7 @@ int main(void) {
 					consoleSelect(&bottomScreen);
 					consoleClear();
 					gamePaused = true;
+					OnPause();
 				}
 			}
 		}
@@ -462,12 +574,27 @@ void GameView () {
 	game.Update(input);
 }
 
+void OnPause () {
+	loadingChar = 0;
+}
+
 void PauseView(){
 	consoleSelect(&bottomScreen);
 	consoleClear();
 
 	PrintCentredTitle(" Pausesd ");
 	iprintf("\n\x1b[10;5HPress START to Resume...");
+
+	// Paying homage to the MS-DOS lol. (Really just though this looked cool)
+	iprintf("\n\x1b[20;2H%c", loadingChars[loadingChar]);
+	loadingCharTimer++;
+	if (loadingCharTimer > LOADING_CHAR_DELAY) {
+		loadingCharTimer = 0;
+		loadingChar++;
+		if (loadingChar > LOADING_CHAR_COUNT - 2) {
+			loadingChar = 0;
+		}
+	}
 
 	if (input == KEY_START) {
 		consoleSelect(&bottomScreen);
@@ -487,8 +614,7 @@ void HandleInput() {
 void PrintCentredTitle(const char* title) {
 	//size_t len = sizeof(title);
 	unsigned int len = strlen(title);
-	unsigned int i; // Stored in local var incase i get carried away with for-loops
-	for (i = 0; i < CHAR_H; i++) {
+	for (unsigned int i = 0; i < CHAR_H; i++) {
 		if (i < ((CHAR_H / 2) - (len / 2)) ||
 			i > ((CHAR_H / 2) + (len / 2))) {
 			iprintf("=");
