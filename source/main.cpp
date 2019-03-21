@@ -20,6 +20,7 @@
 #include "defines.h"
 #include "structure.h"
 #include "consoles.h"
+#include "xorlinkedlist.h"
 
 struct Vector2 {
 	int x;
@@ -55,80 +56,6 @@ struct Vector2 {
 	bool operator!=(const Vector2& a) const { return a.x != x || a.y != y; }
 };
 
-template<class T> struct Node {
-	T data;
-	Node<T>* both = NULL; // Xor of previous and next node
-
-	//Node (T d) : data(d) {}
-	virtual void SetData (T newData) {
-		data = newData;
-	}
-
-
-	Node<T>() {}
-	virtual ~Node<T> () {}
-};
-
-// XOR linked list implementation.
-template<class T> class NodeCollection {
-	public:
-		Node<T>* head, *tail;
-		int length = 0;
-
-		static Node<T>* Xor (Node<T>* a, Node<T>* b) {
-			return (Node<T>*)((uintptr_t)a ^ (uintptr_t)b);
-		}
-
-		void Reinitialise () {
-			if (length > 0) {
-				Node<T>* cur = head, *prev = NULL, *next;
-				while (1) {
-					next = Xor(prev, cur->both);
-					if (prev != NULL) { delete prev; }
-					prev = cur;
-					cur = next;
-					if (cur == NULL) { break; }
-				}
-				if (prev != NULL) { delete prev; }
-			}
-			length = 0; head = NULL; tail = NULL;
-		}
-
-		void Append(T data) {
-			Node<T>* temp = new Node<T>();
-			temp->SetData(data);
-			temp->both = Xor(tail, NULL);
-			if (length > 0) { tail->both = Xor(temp, Xor(tail->both, NULL)); }
-			else { head =  temp; }
-			tail = temp;
-			++length;
-		}
-
-		void Prepend(T data) {
-			Node<T>* temp = new Node<T>();
-			temp->SetData(data);
-			temp->both = Xor(head, NULL);
-			if (length > 0) { head->both = Xor(temp, Xor(head->both, NULL)); }
-			else { tail = temp; }
-			head = temp;
-			++length;
-		}
-
-		// Using a lambda with this function is usually pretty useless.
-		// Instead POINT to a method. Can't believe took me so long to realise this...
-		void TraverseForward (void(*function)(T)) {
-			Node<T>* cur = head, *prev = NULL, *next;
-			int i = 0;
-			while (1) {
-				function(cur->data);
-				// Next node address is XOR of prev & cur
-				next = NodeCollection<T>::Xor(prev, cur->both);
-				prev = cur; cur = next;
-				if (cur == NULL) { break; } ++i;
-			}
-		}
-};
-
 struct CoinData {
 	Vector2 pos;
 
@@ -154,6 +81,17 @@ struct CoinDataDynamic : public CoinData {
 
 		// Apply velocity to position.
 		pos += velo;
+	}
+};
+
+// This coin will make the player lose 2 tail parts. If their length is 2, then they lose
+struct CoinDataTrap : public CoinData {
+	CoinDataTrap(Vector2& pos) : CoinData(pos) {
+
+	}
+
+	void Update () override {
+
 	}
 };
 
@@ -199,6 +137,10 @@ class Player {
 			veloTime = max(newDelay, 1);
 		}
 
+		void Add1ToTail () {
+			tail.Append(tail.tail->data); //.Add(-velo.x, -velo.y)
+		}
+
 	private:
 		int veloTimer = 0, veloTime = 25;
 
@@ -242,12 +184,13 @@ class Player {
 		}
 };
 
+static Player player;
+
 class ScoringManager {
 	public:
 		NodeCollection<CoinData> coins;
 		int coinTimer = 0;
 		int coinTime = 100;
-		int coinInstances = 0;
 		int coinMaximum = 3;
 
 		int hiscore = 0;
@@ -264,9 +207,9 @@ class ScoringManager {
 		void Reset () {
 			// Reset coins
 			coins.Reinitialise();
-			coinInstances = 0;
 
 			// Reset score
+			curScore = 0;
 		}
 
 		void ScoreAdd(int increment) {
@@ -277,9 +220,18 @@ class ScoringManager {
 			curScore = 0;
 		}
 
+		int GetCoinInstances() {
+			return coins.length;
+		}
+
+		void CoinCollected () {
+			ScoreAdd(1);
+			player.Add1ToTail();
+		}
+
 	private:
 		void UpdateCoinTimer () {
-			if (coinInstances > coinMaximum - 1) { 
+			if (GetCoinInstances() > coinMaximum - 1) { 
 				coinTimer = 0;
 				return; 
 			}
@@ -287,34 +239,42 @@ class ScoringManager {
 			coinTimer++;
 			if (coinTimer > coinTime) {
 				coinTimer = 0;
-				SpawnCoin();
+				CoinSpawn();
 			}
 		}
 
-		void SpawnCoin () {
+		void CoinSpawn () {
 			Vector2 pos = {
 				rand() % (BOARD_WIDTH - 1) + 1, 
 				rand() % (BOARD_HEIGHT - 1) + 1 
 			};
 
 			coins.Append(CoinData(pos));
-			++coinInstances;
 		}
 };
 
+// Are static so they can be used in lambda expressions
+static unsigned int tiles[BOARD_WIDTH][BOARD_HEIGHT];
+static ScoringManager scoring;
+static int* coinsDirty;
+
 class SaveManager {
 	// TODO: USE FOPEN, AND OTHER BUILT-IN FUNCTIONS TO WORK THIS...
-};
 
-static unsigned int tiles[BOARD_WIDTH][BOARD_HEIGHT];
+	public:
+		static void Save () {
+			FILE* pFile = fopen(GAME_SAVE_PATH, "wb");
+			
+			if (pFile != NULL) {
+				fputs("save data working", pFile);
+				fclose(pFile);
+			}
+		}
+};
 
 class Game {
 	public:
-		Player player;
 		bool started = false, gameLost = false;
-
-		// Scoring
-		ScoringManager scoring;
 
 		void Start () {
 			ResetGame();
@@ -326,6 +286,7 @@ class Game {
 			levelTarget = 100;
 			level = 0;
 			levelProgress = 0;
+			scoring.ScoreReset();
 		}
 
 		void Update(int& input) {
@@ -383,14 +344,26 @@ class Game {
 
 				// Affect game based on lvl
 				player.SetDelayer(VELO_DELAYER - (level * 2));
-
-				player.tail.Append(player.tail.tail->data); //.Add(-player.velo.x, -player.velo.y)
-
+				//player.Add1ToTail();
 			}
 		}
 
-		static void SetCoinTile(CoinData d) {
-			tiles[d.pos.x][d.pos.y] = TILE_COIN;
+		void DrawHeader () {
+			SelectConsole(CONSOLE_TOP);
+			printf("Score: %d\n", scoring.curScore);
+		}
+
+		static void SetCoinTile(CoinData d, int idx) {
+			if (d.pos == player.pos) {
+				coinsDirty[idx] = 1;
+				// Collected coin. Remove from list.
+				scoring.CoinCollected();
+				//scoring.coins.RemoveAt(scoring.coins.IndexOf(&d));
+			}
+			else {
+				// Only draw coin if player is not on it.
+				tiles[d.pos.x][d.pos.y] = TILE_COIN;
+			}
 		}
 		
 		void RefreshTiles () {
@@ -423,7 +396,18 @@ class Game {
 			}
 
 			//void(*func)(CoinData) = [](CoinData x) { tiles[x.pos.x][x.pos.y] = TILE_COIN; };
+
+			// Coins marked dirty are being removed.
+			const int len = scoring.coins.length;
+			coinsDirty = new int[len];
+			for (int i = 0; i < len; i++) { coinsDirty[i] = 0; } // Initialise all as non-dirty
 			scoring.coins.TraverseForward(SetCoinTile);
+			for (int i = 0; i < len; i++) { 
+				if (coinsDirty[i] == 1) {
+					scoring.coins.RemoveAt(i);
+				}
+			}
+			delete[] coinsDirty;
 		}
 
 		void DrawBoard() {
@@ -435,7 +419,7 @@ class Game {
 				}
 			};
 
-			int lastConsoleCol = TILECOL_DEFAULT;
+			int lastConsoleCol = CONSCOL_I_WHT; // Must initialise as 1 because of end of this method.
 			for (int y = 0; y < BOARD_HEIGHT; y++) {
 				for (int x = 0; x < BOARD_WIDTH; x++) {
 					switch (tiles[x][y]) {
@@ -475,6 +459,8 @@ class Game {
 					}
 				}
 			}
+			iprintf(CONSCOL_WHT); // Reset at end
+			DrawHeader();
 		}
 };
 
@@ -510,7 +496,9 @@ int main(void) {
 
 	InitialiseConsoles();
 	consoleSelect(&topScreen);
-	
+
+	SaveManager::Save ();
+
 	// Start in menu on launch.
 	inMenu = true;
 	game.ResetGame();

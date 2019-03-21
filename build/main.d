@@ -62,7 +62,8 @@ main.o: \
  e:/Programs/_Production/devkitPro/libnds/include/nds/arm9/nand.h \
  e:/Programs/_Production/devkitPro/_projects/2019/project_SNAKE2.0/source/defines.h \
  e:/Programs/_Production/devkitPro/_projects/2019/project_SNAKE2.0/source/structure.h \
- e:/Programs/_Production/devkitPro/_projects/2019/project_SNAKE2.0/source/consoles.h
+ e:/Programs/_Production/devkitPro/_projects/2019/project_SNAKE2.0/source/consoles.h \
+ e:/Programs/_Production/devkitPro/_projects/2019/project_SNAKE2.0/source/xorlinkedlist.h
 
 e:/Programs/_Production/devkitPro/libnds/include/nds.h:
 
@@ -189,3 +190,5 @@ e:/Programs/_Production/devkitPro/_projects/2019/project_SNAKE2.0/source/defines
 e:/Programs/_Production/devkitPro/_projects/2019/project_SNAKE2.0/source/structure.h:
 
 e:/Programs/_Production/devkitPro/_projects/2019/project_SNAKE2.0/source/consoles.h:
+
+e:/Programs/_Production/devkitPro/_projects/2019/project_SNAKE2.0/source/xorlinkedlist.h:

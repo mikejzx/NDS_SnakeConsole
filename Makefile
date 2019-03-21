@@ -22,7 +22,7 @@ include $(DEVKITARM)/base_rules
 
 LIBNDS	:=	$(DEVKITPRO)/libnds
 
-GAME_TITLE	    :=	Mike\'s Snake Game
+GAME_TITLE	    :=	Mike's Snake Game
 GAME_SUBTITLE1	:=	No publisher lol
 # GAME_SUBTITLE2	:=	Text 3
 GAME_ICON		:=	$(CURDIR)/../icon.bmp

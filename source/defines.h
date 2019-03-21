@@ -2,6 +2,8 @@
 // General defines
 #define DEBUGMODE 0
 
+const char* GAME_SAVE_PATH = "project_SNAKE2.0.SAV";
+
 #define BOARD_WIDTH 16 // Width of game board
 #define BOARD_HEIGHT 10 // Height of game board
 #define CHAR_H 32 // Number of chars that fit horizontally
