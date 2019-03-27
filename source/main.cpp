@@ -254,7 +254,7 @@ class ScoringManager {
 };
 
 // Are static so they can be used in lambda expressions
-static unsigned int tiles[BOARD_WIDTH][BOARD_HEIGHT];
+static unsigned int tiles[BOARD_WIDTH * BOARD_HEIGHT];
 static ScoringManager scoring;
 static int* coinsDirty;
 
@@ -362,18 +362,19 @@ class Game {
 			}
 			else {
 				// Only draw coin if player is not on it.
-				tiles[d.pos.x][d.pos.y] = TILE_COIN;
+				tiles[d.pos.x + d.pos.y * BOARD_WIDTH] = TILE_COIN;
 			}
 		}
 		
 		void RefreshTiles () {
 			for (int y = 0; y < BOARD_HEIGHT; y++) {
 				for (int x = 0; x < BOARD_WIDTH; x++) {
+					unsigned idx = x + y * BOARD_WIDTH;
 					if (player.pos.Equals(x, y)) {
-						tiles[x][y] = TILE_HEAD;
+						tiles[idx] = TILE_HEAD;
 					}
 					else {
-						tiles[x][y] = TILE_DEFAULT;
+						tiles[idx] = TILE_DEFAULT;
 					}
 				}
 			}
@@ -387,7 +388,7 @@ class Game {
 					t = TILE_LOSEPOINT;
 					gameLost = true;
 				}
-				tiles[cur->data.x][cur->data.y] = t;
+				tiles[cur->data.x + cur->data.y * BOARD_WIDTH] = t;
 
 				// Next is XOR of prev & cur
 				next = NodeCollection<Vector2>::Xor(prev, cur->both);
@@ -422,7 +423,7 @@ class Game {
 			int lastConsoleCol = CONSCOL_I_WHT; // Must initialise as 1 because of end of this method.
 			for (int y = 0; y < BOARD_HEIGHT; y++) {
 				for (int x = 0; x < BOARD_WIDTH; x++) {
-					switch (tiles[x][y]) {
+					switch (tiles[x + y * BOARD_WIDTH]) {
 						case (TILE_DEFAULT): {
 							col(TILECOL_DEFAULT, &lastConsoleCol);
 							iprintf(TILECHAR_DEFAULT);
